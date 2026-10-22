@@ -9,6 +9,7 @@ export const api = {
  register: (username: string, password: string) => request<AuthResponse>('/auth/register', { method: 'POST', body: JSON.stringify({ username, password }) }),
  login: (username: string, password: string) => request<AuthResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
  history: (room: string, token: string) => request<ChatMessage[]>(`/chat/${encodeURIComponent(room)}`, {}, token),
+ directConversation: (username: string, token: string) => request<{conversationId:string;participant:string}>(`/chat/direct/${encodeURIComponent(username)}`, { method: 'POST' }, token),
  onlineUsers: (token: string) => request<string[]>('/presence/online', {}, token),
  heartbeat: (token: string) => request<{status:string}>('/presence/heartbeat', { method: 'POST' }, token),
 }
