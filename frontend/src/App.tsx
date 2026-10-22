@@ -1,0 +1,52 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Client, type IMessage } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
+import { ArrowUpRight, LogOut, MessageCircle, Radio, Send, ShieldCheck, Sparkles, Users } from 'lucide-react'
+import { api } from './api'
+import type { AuthResponse, ChatMessage } from './types'
+
+const WS_URL = import.meta.env.VITE_WS_URL ?? 'http://localhost:8080/ws'
+const ROOM = 'general'
+
+export default function App() {
+ const [session,setSession] = useState<AuthResponse|null>(()=>{const token=localStorage.getItem('chat_token');const username=localStorage.getItem('chat_username');return token&&username?{token,username}:null})
+ const [mode,setMode] = useState<'login'|'register'>('login')
+ const [username,setUsername] = useState(''); const [password,setPassword] = useState('')
+ const [messages,setMessages] = useState<ChatMessage[]>([]); const [draft,setDraft] = useState('')
+ const [online,setOnline] = useState<string[]>([]); const [connected,setConnected] = useState(false)
+ const [busy,setBusy] = useState(false); const [error,setError] = useState('')
+ const clientRef = useRef<Client|null>(null); const bottomRef = useRef<HTMLDivElement>(null)
+
+ useEffect(()=>{
+  if(!session)return
+  let active=true
+  const refresh=()=>api.onlineUsers(session.token).then(v=>{if(active)setOnline(v)}).catch(()=>undefined)
+  const heartbeat=()=>api.heartbeat(session.token).then(refresh).catch(()=>undefined)
+  void api.history(ROOM,session.token).then(v=>{if(active)setMessages(v)}).catch(e=>setError(String(e)))
+  void heartbeat(); const beatTimer=window.setInterval(heartbeat,25000); const onlineTimer=window.setInterval(refresh,10000)
+  const client=new Client({
+   webSocketFactory:()=>new SockJS(WS_URL),
+   connectHeaders:{Authorization:`Bearer ${session.token}`}, reconnectDelay:3000,
+   onConnect:()=>{setConnected(true);client.subscribe(`/topic/conversations/${ROOM}`,(frame:IMessage)=>{const incoming=JSON.parse(frame.body) as ChatMessage;setMessages(current=>current.some(m=>m.id===incoming.id)?current:[...current,incoming])})},
+   onDisconnect:()=>setConnected(false),onWebSocketClose:()=>setConnected(false),
+   onStompError:()=>{setConnected(false);setError('Live connection failed. Reconnecting…')}
+  })
+  clientRef.current=client;void client.activate()
+  return ()=>{active=false;window.clearInterval(beatTimer);window.clearInterval(onlineTimer);clientRef.current=null;void client.deactivate()}
+ },[session])
+ useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:'smooth'})},[messages])
+
+ async function authenticate(e:FormEvent){e.preventDefault();setBusy(true);setError('')
+  try{const result=mode==='register'?await api.register(username.trim(),password):await api.login(username.trim(),password);localStorage.setItem('chat_token',result.token);localStorage.setItem('chat_username',result.username);setSession(result);setPassword('')}
+  catch(err){setError(err instanceof Error?err.message:'Could not sign in')}finally{setBusy(false)}
+ }
+ function send(e:FormEvent){e.preventDefault();const content=draft.trim();if(!content||!clientRef.current?.connected)return
+  clientRef.current.publish({destination:'/app/chat.send',body:JSON.stringify({conversationId:ROOM,content})});setDraft('')
+ }
+ function logout(){clientRef.current?.deactivate();localStorage.removeItem('chat_token');localStorage.removeItem('chat_username');setSession(null);setMessages([]);setOnline([]);setConnected(false)}
+ if(!session)return <main className="auth-shell"><div className="orb orb-one"/><div className="orb orb-two"/><section className="auth-card glass"><div className="brand-mark"><MessageCircle size={23}/></div><div className="eyebrow"><Sparkles size={14}/> REAL-TIME MESSAGING</div><h1>Conversations,<br/><span>without the distance.</span></h1><p className="muted">A calmer space to catch up, share ideas, and stay connected.</p><form className="auth-form" onSubmit={authenticate}><label>Username<input value={username} onChange={e=>setUsername(e.target.value)} minLength={3} maxLength={30} required autoComplete="username" placeholder="e.g. saurabh"/></label><label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} minLength={8} required autoComplete={mode==='login'?'current-password':'new-password'} placeholder="At least 8 characters"/></label>{error&&<div className="error-box">{error}</div>}<button className="primary-button" disabled={busy}>{busy?'Please wait…':mode==='login'?'Sign in':'Create account'} <ArrowUpRight size={17}/></button></form><p className="switch-auth">{mode==='login'?'New around here?':'Already have an account?'} <button onClick={()=>{setMode(mode==='login'?'register':'login');setError('')}}>{mode==='login'?'Create account':'Sign in'}</button></p><div className="security-note"><ShieldCheck size={15}/> Passwords are hashed before storage.</div></section><div className="auth-footer">CHAT WITH REDIS <span>•</span> BUILT FOR REAL-TIME</div></main>
+
+ return <main className="app-shell"><aside className="sidebar glass"><div className="brand-row"><div className="brand-mark small"><MessageCircle size={19}/></div><div><strong>mellow</strong><small>your space to talk</small></div></div><div className="workspace-label">WORKSPACE <span>01</span></div><div className="room active-room"><span className="room-icon"><MessageCircle size={17}/></span><span><b>General chat</b><small>Everyone in one place</small></span><span className="room-dot"/></div><div className="side-section-title"><span>PEOPLE ONLINE</span><span className="online-count">{online.length}</span></div><div className="people-list">{online.length?online.map(u=><div className="person" key={u}><span className="avatar">{u[0]?.toUpperCase()}</span><span className="person-name">{u}{u===session.username?' (you)':''}</span><span className="presence-dot">●</span></div>):<p className="empty-people">No one else online yet.</p>}</div><div className="sidebar-bottom"><div className="user-profile"><span className="avatar own">{session.username[0]?.toUpperCase()}</span><span className="profile-text"><b>{session.username}</b><small><span className="tiny-dot"/> Active now</small></span><button className="icon-button" title="Sign out" onClick={logout}><LogOut size={17}/></button></div></div></aside>
+ <section className="chat-panel glass"><header className="chat-header"><div className="header-room"><div className="header-icon"><MessageCircle size={21}/></div><div><h2>General chat</h2><p>A little corner of the internet, just for us.</p></div></div><div className={connected?'connection-pill connected':'connection-pill'}><span/>{connected?'Live connection':'Connecting'}</div></header><div className="welcome-banner"><div className="welcome-icon"><Sparkles size={18}/></div><div><b>Good to have you here, {session.username}.</b><p>Say hello, share a thought, or just listen in.</p></div></div><div className="message-area"><div className="day-divider"><span>THE CONVERSATION</span></div>{messages.map((m,i)=>{const own=m.sender===session.username;const grouped=messages[i-1]?.sender===m.sender;return <div className={own?'message-row own-message':'message-row'} key={m.id}>{!own&&(grouped?<span className="avatar-spacer"/>:<span className="avatar message-avatar">{m.sender[0]?.toUpperCase()}</span>)}<div className="message-content">{!own&&!grouped&&<div className="message-meta"><b>{m.sender}</b><time>{new Date(m.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></div>}<div className={own?'bubble own-bubble':'bubble'}>{m.content}</div>{own&&<div className="message-status">You · {new Date(m.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>}</div></div>})}{!messages.length&&<div className="empty-chat"><div className="empty-chat-icon"><MessageCircle size={24}/></div><b>This conversation is just getting started</b><p>Send the first message and break the ice.</p></div>}<div ref={bottomRef}/></div>{error&&<div className="inline-error">{error}<button onClick={()=>setError('')}>Dismiss</button></div>}<form className="composer" onSubmit={send}><div className="composer-inner"><input value={draft} onChange={e=>setDraft(e.target.value)} placeholder={connected?'Write a message…':'Connecting to chat…'} maxLength={2000} disabled={!connected}/><span className="composer-hint"><Radio size={13}/> Enter to send</span><button className="send-button" title="Send message" disabled={!connected||!draft.trim()}><Send size={17}/></button></div><div className="composer-foot"><span><ShieldCheck size={13}/> Be kind. Keep it human.</span><span>{draft.length}/2000</span></div></form></section>
+ <aside className="details-panel"><div className="details-top"><div className="detail-orb"><MessageCircle size={28}/></div><h3>General chat</h3><p>One shared space for the whole crew.</p><div className="detail-stat"><Users size={15}/> {online.length} online now</div></div><div className="detail-card glass"><div className="detail-card-title">ABOUT THIS ROOM</div><p>A friendly place to share updates, ask questions, and keep conversations flowing.</p><div className="detail-feature"><span className="feature-icon purple"><Radio size={15}/></span><span><b>Real-time</b><small>Messages arrive instantly</small></span></div><div className="detail-feature"><span className="feature-icon green"><ShieldCheck size={15}/></span><span><b>Account protected</b><small>Token-based sign-in</small></span></div></div><div className="redis-status glass"><span className="redis-indicator"/><div><b>Redis presence</b><small>Online status with TTL</small></div><span className="status-label">ACTIVE</span></div><div className="details-footer">MADE TO BRING PEOPLE CLOSER <span>✳</span></div></aside></main>
+}
