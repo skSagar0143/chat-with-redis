@@ -29,7 +29,7 @@ public class ChatService {
  public String directConversation(String currentUser, String otherUser) {
   String other=otherUser == null ? "" : otherUser.trim();
   if(other.isBlank() || other.equalsIgnoreCase(currentUser)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose another user to start a private chat");
-  String actual=users.findByUsername(other).map(u->u.getUsername()).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"User not found"));
+  String actual=users.findByUsernameIgnoreCase(other).map(u->u.getUsername()).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"User not found"));
   return directId(currentUser,actual);
  }
 
@@ -42,7 +42,7 @@ public class ChatService {
   if(first.isBlank() || second.isBlank() || first.equals(second)) return false;
   if(!first.equals(user) && !second.equals(user)) return false;
   String other=first.equals(user)?second:first;
-  return users.findByUsername(other).isPresent() && conversationId.equals(directId(first,second));
+  return users.findByUsernameIgnoreCase(other).isPresent() && conversationId.equals(directId(first,second));
  }
 
  private String directId(String first, String second) {
