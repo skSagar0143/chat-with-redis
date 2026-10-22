@@ -26,7 +26,7 @@ At repository root, copy `.env.example` to `.env`, replace the example passwords
 docker compose up -d
 ```
 
-Compose maps MySQL to host port **3307** and Redis to **6381** to avoid collisions with common local defaults. The `.env` file configures Docker Compose. For Spring Boot, set environment variables in your terminal/STS Run Configuration if you change the defaults.
+Compose maps MySQL to host port **3307** and Redis to **6381** to avoid collisions with common local defaults. The root `.env` file configures Docker Compose only; Spring Boot launched from STS does not automatically read that file. If you change the values, set `DB_USERNAME` to `MYSQL_USER`, `DB_PASSWORD` to `MYSQL_PASSWORD`, and `JWT_SECRET` in your STS Run Configuration.
 
 ## 2. Run backend
 Open a terminal:
@@ -38,7 +38,7 @@ mvn spring-boot:run
 
 API base URL: `http://localhost:8080/api`; WebSocket endpoint: `http://localhost:8080/ws`.
 
-Backend environment variables: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`. Defaults match the local Compose credentials. Change secrets before use beyond local development.
+Backend environment variables: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `JWT_SECRET`. Without custom values, defaults match the Compose defaults. If you customize the root `.env`, make the backend credentials match those values.
 
 ## 3. Run frontend
 Open a second terminal:
